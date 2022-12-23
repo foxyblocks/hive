@@ -12,12 +12,13 @@ export type Piece = {
   kind: PieceKind;
   id: string;
   player: Player;
-  space?: Space;
+  position?: Position;
 };
 
-export type Space = {
+export type Position = {
   row: number; // can be 0 or positive or negative
   column: number; // can be 0 or positive or negative
+  layer: number; // How high stacked is this piece can be 0 or positive
 };
 
 export enum Player {
@@ -79,7 +80,7 @@ function isEven(num: number) {
 
 // make a board of spaces that goes 10 rows up, 10 rows down, 10 columns left, 10 columns right
 export function makeBoard() {
-  const spaces: Space[] = [];
+  const spaces: Position[] = [];
   for (let row = -10; row <= 10; row++) {
     for (let column = -10; column <= 10; column++) {
       if (isEven(row) && isEven(column)) {
@@ -88,7 +89,7 @@ export function makeBoard() {
       if (isOdd(row) && isOdd(column)) {
         continue;
       }
-      spaces.push({ row, column });
+      spaces.push({ row, column, layer: 0 });
     }
   }
   return spaces;
@@ -105,11 +106,11 @@ const Game: Game<HiveGameState> = {
   },
 
   moves: {
-    playPiece: ({ G, playerID }, piece: Piece, space: Space) => {
-      // TODO: make sure the piece doesn't have a space already
-      // TODO: make sure the space doesn't have a piece already
+    movePiece: ({ G, playerID }, piece: Piece, position: Position) => {
+      // TODO: make sure the piece doesn't have a position already
+      // TODO: make sure the position doesn't have a piece already
       const index = G.pieces.findIndex((p) => p.id === piece.id);
-      G.pieces[index].space = space;
+      G.pieces[index].position = position;
     },
   },
 };

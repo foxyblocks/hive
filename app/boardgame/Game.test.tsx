@@ -10,21 +10,21 @@ describe('colorForPlayer()', () => {
 
 describe('Game', () => {
   describe('moves', () => {
-    describe('playPiece', () => {
+    describe('movePiece', () => {
       test('it puts the piece on the board', () => {
         const client = Client<HiveGameState>({
           game: Game,
         });
 
         const piece = makePiece(PieceKind.QUEEN, Player.WHITE);
-        const space = { row: 0, column: 1 };
+        const position = { row: 0, column: 1, layer: 0 };
 
-        client.moves.playPiece(piece, space);
+        client.moves.movePiece(piece, position);
         const state = client.getState()!;
         const statePiece = state.G.pieces.find((p) => p.id === piece.id);
 
         // const { G, ctx } = (client.store.getState() as HiveGameState);
-        expect(statePiece?.space).toEqual(space);
+        expect(statePiece?.position).toEqual(position);
       });
     });
   });

@@ -3,7 +3,7 @@ import {
   HiveGameState,
   PieceKind,
   Piece,
-  Space,
+  Position,
   colorForPlayer,
   Player,
   isCurrentPlayer,
@@ -12,7 +12,14 @@ import {
 import { Box, chakra, Flex, Grid, Heading, Square, Text, useBoolean } from '@chakra-ui/react';
 import { ReactNode, useState } from 'react';
 
-const SPACE_SIZE = 9;
+const GRID_SIZE = 9;
+const EMOJIS = {
+  [PieceKind.QUEEN]: '👑',
+  [PieceKind.BEETLE]: '🐞',
+  [PieceKind.GRASSHOPPER]: '🦗',
+  [PieceKind.SPIDER]: '🕷',
+  [PieceKind.ANT]: '🐜',
+};
 
 function Hexagon({
   fill,
@@ -45,19 +52,13 @@ function Hexagon({
   );
 }
 
-interface BoardSpaceProps {
-  space: Space;
-  isInteractive?: boolean;
-  onSelect?: (space: Space) => void;
-}
-
-function BoardPosition({ space, children }: { space: Space; children: ReactNode }) {
-  const xOffset = space.column * ((SPACE_SIZE / 10) * 7.8);
-  const yOffset = space.row * ((SPACE_SIZE / 10) * 4.5);
+function BoardPosition({ position, children }: { position: Position; children: ReactNode }) {
+  const xOffset = position.column * ((GRID_SIZE / 10) * 7.8);
+  const yOffset = position.row * ((GRID_SIZE / 10) * 4.5);
   return (
     <Box
-      w={`${SPACE_SIZE}vmax`}
-      h={`${SPACE_SIZE}vmax`}
+      w={`${GRID_SIZE}vmax`}
+      h={`${GRID_SIZE}vmax`}
       pos="absolute"
       top={`calc(50% + ${yOffset}vmax)`}
       left={`calc(50% + ${xOffset}vmax)`}
@@ -73,13 +74,19 @@ function BoardPosition({ space, children }: { space: Space; children: ReactNode 
   );
 }
 
-function EmptyBoardSpace({ space, isInteractive, onSelect }: BoardSpaceProps) {
+interface BoardSpaceProps {
+  position: Position;
+  isInteractive?: boolean;
+  onSelect?: (pos: Position) => void;
+}
+
+function EmptyBoardSpace({ position, isInteractive, onSelect }: BoardSpaceProps) {
   const [isHovered, setIsHovered] = useState(false);
   function handleSelect() {
-    onSelect && isInteractive && onSelect(space);
+    onSelect && isInteractive && onSelect(position);
   }
   return (
-    <BoardPosition space={space}>
+    <BoardPosition position={position}>
       <Hexagon
         fill="#efefef"
         stroke={isHovered ? '#ccc' : undefined}
@@ -91,73 +98,6 @@ function EmptyBoardSpace({ space, isInteractive, onSelect }: BoardSpaceProps) {
     </BoardPosition>
   );
 }
-
-/**
- * React component that returns a hexagon SVG
- */
-function BoardSpace({ space, isInteractive, onSelect }: BoardSpaceProps) {
-  const [isHovered, setIsHovered] = useState(false);
-  const xOffset = space.column * ((SPACE_SIZE / 10) * 7.8);
-  const yOffset = space.row * ((SPACE_SIZE / 10) * 4.5);
-  const fill = space.piece ? colorForPlayer(space.piece.player) : '#efefef';
-  function handleSelect() {
-    onSelect && isInteractive && onSelect(space);
-  }
-  return (
-    <Box
-      w={`${SPACE_SIZE}vmax`}
-      h={`${SPACE_SIZE}vmax`}
-      pos="absolute"
-      top={`calc(50% + ${yOffset}vmax)`}
-      left={`calc(50% + ${xOffset}vmax)`}
-      transform="translate(-50%, -50%)"
-      display={'grid'}
-      gridTemplateRows={'1fr'}
-      gridTemplateColumns={'1fr'}
-      placeContent={'center'}
-      onMouseOver={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <Box position="absolute" top={0} left={0} right={0} bottom={0}>
-        <Hexagon
-          onClick={handleSelect}
-          fill={fill}
-          isInteractive={isInteractive}
-          stroke={isHovered && isInteractive ? 'black' : undefined}
-        />
-      </Box>
-      <Text
-        pos="absolute"
-        top="50%"
-        left="50%"
-        transform={'translate(-50%, -50%)'}
-        pointerEvents="none"
-      >
-        {space.row}, {space.column}
-      </Text>
-      {/* {space.piece && (
-        <Box
-          pos="absolute"
-          top="50%"
-          left="50%"
-          transform={'translate(-50%, -50%)'}
-          width="100%"
-          height="100%"
-        >
-          <PlayerPiece piece={space.piece} />
-        </Box>
-      )} */}
-    </Box>
-  );
-}
-
-const emojis = {
-  [PieceKind.QUEEN]: '👑',
-  [PieceKind.BEETLE]: '🐞',
-  [PieceKind.GRASSHOPPER]: '🦗',
-  [PieceKind.SPIDER]: '🕷',
-  [PieceKind.ANT]: '🐜',
-};
 
 interface PlayerPieceProps {
   piece: Piece;
@@ -195,7 +135,7 @@ function PlayerPiece({ piece, isSelected, onSelect, isInteractive }: PlayerPiece
         fontSize="calc(2rem * 100vmax)"
         pointerEvents="none"
       >
-        {emojis[piece.kind]}
+        {EMOJIS[piece.kind]}
       </Box>
     </Box>
   );
@@ -210,23 +150,23 @@ export default function Board(props: HiveBoardProps) {
 
   const boardLayer = makeBoard();
 
-  const piecesOnBoard = props.G.pieces.filter((piece) => piece.space !== undefined);
+  const piecesOnBoard = props.G.pieces.filter((piece) => piece.position !== undefined);
   const currentPlayer = isCurrentPlayer(Player.WHITE, props.ctx) ? Player.WHITE : Player.BLACK;
   const piecesInCurrentPlayerBag = props.G.pieces.filter(
-    (piece) => piece.space === undefined && piece.player === currentPlayer,
+    (piece) => piece.position === undefined && piece.player === currentPlayer,
   );
   const piecesInOppositePlayerBat = props.G.pieces.filter(
-    (piece) => piece.space === undefined && piece.player !== currentPlayer,
+    (piece) => piece.position === undefined && piece.player !== currentPlayer,
   );
 
-  function handleSelectSpace(space: Space) {
+  function handleSelectSpace(position: Position) {
     if (selectedPiece === undefined) {
       return;
     }
 
     const piece = piecesInCurrentPlayerBag[selectedPiece];
 
-    props.moves.playPiece(piece, space);
+    props.moves.movePiece(piece, position);
     setSelectedPiece(undefined);
   }
 
@@ -247,10 +187,10 @@ export default function Board(props: HiveBoardProps) {
         zIndex={10}
         pointerEvents="none"
       >
-        {boardLayer.map((space) => (
+        {boardLayer.map((position) => (
           <EmptyBoardSpace
-            key={`${space.row},${space.column}`}
-            space={space}
+            key={`${position.row},${position.column}`}
+            position={position}
             isInteractive={selectedPiece !== undefined}
             onSelect={handleSelectSpace}
           />
@@ -266,7 +206,7 @@ export default function Board(props: HiveBoardProps) {
         pointerEvents="none"
       >
         {piecesOnBoard.map((piece) => (
-          <BoardPosition key={piece.id} space={piece.space!}>
+          <BoardPosition key={piece.id} position={piece.position!}>
             <PlayerPiece key={piece.id} piece={piece} isInteractive={selectedPiece !== undefined} />
           </BoardPosition>
         ))}
@@ -312,25 +252,6 @@ export default function Board(props: HiveBoardProps) {
           </Flex>
         );
       })}
-      {/* <Flex pos="absolute" top="0">
-        {props.G.blackBag.map((piece, i) => (
-          <Square key={piece.id} size="5vmax">
-            <PlayerPiece piece={piece} />
-          </Square>
-        ))}
-      </Flex> */}
-      {/* <Flex pos="absolute" bottom="0">
-        {props.G.whiteBag.map((piece, i) => (
-          <Square key={piece.id} size="5vmax">
-            <PlayerPiece
-              key={i}
-              piece={piece}
-              isSelected={selectedPiece === i}
-              onSelect={() => setSelectedPiece(i)}
-            />
-          </Square>
-        ))}
-      </Flex> */}
     </Grid>
   );
 }
