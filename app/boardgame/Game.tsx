@@ -12,17 +12,31 @@ export type Piece = {
   kind: PieceKind;
   id: string;
   player: Player;
+  space?: Space;
 };
 
 export type Space = {
   row: number; // can be 0 or positive or negative
   column: number; // can be 0 or positive or negative
-  piece?: Piece;
 };
 
 export enum Player {
   'WHITE' = '0',
   'BLACK' = '1',
+}
+
+export function findPiece(pieces: Piece[], id: string) {
+  return pieces.find((piece) => piece.id === id);
+}
+
+export function makePiece(kind: PieceKind, player: Player, pieceNumber: number = 1) {
+  const label = QUANTITIES[kind] > 1 ? `${kind}${pieceNumber}` : kind;
+  const id = `${player}-${label}`;
+  return {
+    id,
+    kind,
+    player,
+  };
 }
 
 export function colorForPlayer(player: Player) {
@@ -42,21 +56,14 @@ const QUANTITIES = {
 };
 
 export interface HiveGameState {
-  whiteBag: Piece[];
-  blackBag: Piece[];
-  board: Space[];
+  pieces: Piece[];
 }
 
 function makeBag(player: Player): Piece[] {
   const bag = [];
   for (const kind of Object.values(PieceKind)) {
     for (let i = 0; i < QUANTITIES[kind]; i++) {
-      const id = QUANTITIES[kind] > 1 ? `${kind}${i + 1}` : kind;
-      bag.push({
-        kind,
-        id,
-        player,
-      });
+      bag.push(makePiece(kind, player, i + 1));
     }
   }
   return bag;
@@ -71,7 +78,7 @@ function isEven(num: number) {
 }
 
 // make a board of spaces that goes 10 rows up, 10 rows down, 10 columns left, 10 columns right
-function makeBoard() {
+export function makeBoard() {
   const spaces: Space[] = [];
   for (let row = -10; row <= 10; row++) {
     for (let column = -10; column <= 10; column++) {
@@ -89,9 +96,7 @@ function makeBoard() {
 
 const Game: Game<HiveGameState> = {
   setup: () => ({
-    whiteBag: makeBag(Player.WHITE),
-    blackBag: makeBag(Player.BLACK),
-    board: makeBoard(),
+    pieces: [...makeBag(Player.WHITE), ...makeBag(Player.BLACK)],
   }),
 
   turn: {
@@ -101,14 +106,10 @@ const Game: Game<HiveGameState> = {
 
   moves: {
     playPiece: ({ G, playerID }, piece: Piece, space: Space) => {
-      // loop through the bag and remove the piece
-      const bag = playerID === Player.WHITE ? G.whiteBag : G.blackBag;
-      const index = bag.findIndex((p) => p.id === piece.id);
-      bag.splice(index, 1);
-      const boardSpace = G.board.find((s) => s.row === space.row && s.column === space.column);
-      if (boardSpace) {
-        boardSpace.piece = piece;
-      }
+      // TODO: make sure the piece doesn't have a space already
+      // TODO: make sure the space doesn't have a piece already
+      const index = G.pieces.findIndex((p) => p.id === piece.id);
+      G.pieces[index].space = space;
     },
   },
 };
