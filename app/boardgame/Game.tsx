@@ -1,4 +1,4 @@
-import type { Game, Move } from 'boardgame.io';
+import type { Game, Move, Ctx } from 'boardgame.io';
 
 export enum PieceKind {
   QUEEN = 'Q',
@@ -21,8 +21,16 @@ export type Space = {
 };
 
 export enum Player {
-  'WHITE' = 'white',
-  'BLACK' = 'black',
+  'WHITE' = '0',
+  'BLACK' = '1',
+}
+
+export function colorForPlayer(player: Player) {
+  return player === Player.WHITE ? 'white' : 'black';
+}
+
+export function isCurrentPlayer(player: Player, ctx: Ctx) {
+  return ctx.currentPlayer.toString() === player.toString();
 }
 
 const QUANTITIES = {
@@ -86,10 +94,15 @@ const Game: Game<HiveGameState> = {
     board: makeBoard(),
   }),
 
+  turn: {
+    minMoves: 1,
+    maxMoves: 1,
+  },
+
   moves: {
     playPiece: ({ G, playerID }, piece: Piece, space: Space) => {
       // loop through the bag and remove the piece
-      const bag = playerID === '0' ? G.whiteBag : G.blackBag;
+      const bag = playerID === Player.WHITE ? G.whiteBag : G.blackBag;
       const index = bag.findIndex((p) => p.id === piece.id);
       bag.splice(index, 1);
       const boardSpace = G.board.find((s) => s.row === space.row && s.column === space.column);

@@ -1,7 +1,5 @@
-import HiveClient from './boardgame/HiveClient'
+import HiveClient from './boardgame/HiveClient';
 
 export default function Home() {
-  return (
-    <HiveClient />
-  )
+  return <HiveClient />;
 }
