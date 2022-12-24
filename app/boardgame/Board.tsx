@@ -1,16 +1,18 @@
 import type { BoardProps } from 'boardgame.io/react';
+import { HiveGameState, colorForPlayer, isCurrentPlayer, makeBoard, isValidMove } from './Game';
+import { PieceKind, Piece, Position, Player } from './types';
 import {
-  HiveGameState,
-  PieceKind,
-  Piece,
-  Position,
-  colorForPlayer,
-  Player,
-  isCurrentPlayer,
-  makeBoard,
-} from './Game';
-import { Box, chakra, Flex, Grid, Heading, Square, Text, useBoolean } from '@chakra-ui/react';
-import { ReactNode, useState } from 'react';
+  Box,
+  Center,
+  chakra,
+  Flex,
+  Grid,
+  Heading,
+  Square,
+  Text,
+  useBoolean,
+} from '@chakra-ui/react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 
 const GRID_SIZE = 9;
 const EMOJIS = {
@@ -46,6 +48,7 @@ function Hexagon({
         onClick={onClick}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
+        pointerEvents={isInteractive ? 'all' : 'none'}
         cursor={isInteractive ? 'pointer' : 'default'}
       ></chakra.polygon>
     </chakra.svg>
@@ -56,7 +59,7 @@ function BoardPosition({ position, children }: { position: Position; children: R
   const xOffset = position.column * ((GRID_SIZE / 10) * 7.8);
   const yOffset = position.row * ((GRID_SIZE / 10) * 4.5);
   return (
-    <Box
+    <Center
       w={`${GRID_SIZE}vmax`}
       h={`${GRID_SIZE}vmax`}
       pos="absolute"
@@ -70,28 +73,40 @@ function BoardPosition({ position, children }: { position: Position; children: R
       pointerEvents="all"
     >
       {children}
-    </Box>
+    </Center>
   );
 }
 
-interface BoardSpaceProps {
+interface BoardBgSpaceProps {
   position: Position;
-  isInteractive?: boolean;
-  onSelect?: (pos: Position) => void;
+}
+function BoardBgSpace({ position }: BoardBgSpaceProps) {
+  return (
+    <BoardPosition position={position}>
+      <Hexagon fill="#efefef" />
+    </BoardPosition>
+  );
 }
 
-function EmptyBoardSpace({ position, isInteractive, onSelect }: BoardSpaceProps) {
+interface BoardTargetSpaceProps {
+  position: Position;
+  isSelectable?: boolean;
+  onSelect?: (pos: Position) => void;
+}
+function BoardTargetSpace({ position, isSelectable, onSelect }: BoardTargetSpaceProps) {
   const [isHovered, setIsHovered] = useState(false);
   function handleSelect() {
-    onSelect && isInteractive && onSelect(position);
+    onSelect && isSelectable && onSelect(position);
   }
+
+  const strokeColor = isSelectable ? (isHovered ? 'black' : 'blue') : undefined;
   return (
     <BoardPosition position={position}>
       <Hexagon
-        fill="#efefef"
-        stroke={isHovered ? '#ccc' : undefined}
+        fill="transparent"
+        stroke={strokeColor}
         onClick={handleSelect}
-        isInteractive={isInteractive}
+        isInteractive={isSelectable}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       />
@@ -145,10 +160,15 @@ interface HiveBoardProps extends BoardProps<HiveGameState> {
   // Additional custom properties for your component
 }
 
-export default function Board(props: HiveBoardProps) {
-  const [selectedPiece, setSelectedPiece] = useState<number | undefined>(undefined);
+const boardLayer = makeBoard();
 
-  const boardLayer = makeBoard();
+export default function Board(props: HiveBoardProps) {
+  const [selectedPieceId, setSelectedPieceId] = useState<string | undefined>(undefined);
+
+  const selectedPiece = useMemo(
+    () => props.G.pieces.find((piece) => piece.id === selectedPieceId),
+    [selectedPieceId, props.G],
+  );
 
   const piecesOnBoard = props.G.pieces.filter((piece) => piece.position !== undefined);
   const currentPlayer = isCurrentPlayer(Player.WHITE, props.ctx) ? Player.WHITE : Player.BLACK;
@@ -160,15 +180,24 @@ export default function Board(props: HiveBoardProps) {
   );
 
   function handleSelectSpace(position: Position) {
-    if (selectedPiece === undefined) {
+    if (selectedPieceId === undefined) {
       return;
     }
 
-    const piece = piecesInCurrentPlayerBag[selectedPiece];
+    const piece = props.G.pieces.find((piece) => piece.id === selectedPieceId);
 
     props.moves.movePiece(piece, position);
-    setSelectedPiece(undefined);
+    setSelectedPieceId(undefined);
   }
+
+  const validPositionsForSelectedPiece = useMemo(() => {
+    if (!selectedPiece) {
+      return [];
+    }
+    return boardLayer.filter((position) => {
+      return isValidMove(selectedPiece, position, props.G, props.ctx);
+    });
+  }, [selectedPiece, props.G, props.ctx]);
 
   return (
     <Grid
@@ -179,38 +208,58 @@ export default function Board(props: HiveBoardProps) {
       bgColor="gray.50"
     >
       <Box
+        className="BgSpaces"
         position="absolute"
         left={0}
         top={0}
         width="100%"
         height={'100%'}
-        zIndex={10}
         pointerEvents="none"
       >
         {boardLayer.map((position) => (
-          <EmptyBoardSpace
-            key={`${position.row},${position.column}`}
-            position={position}
-            isInteractive={selectedPiece !== undefined}
-            onSelect={handleSelectSpace}
-          />
+          <BoardBgSpace key={`${position.row},${position.column}`} position={position} />
         ))}
       </Box>
       <Box
+        className="PlayerPieces"
         position="absolute"
         left={0}
         top={0}
         width="100%"
         height={'100%'}
-        zIndex={10}
         pointerEvents="none"
       >
         {piecesOnBoard.map((piece) => (
           <BoardPosition key={piece.id} position={piece.position!}>
-            <PlayerPiece key={piece.id} piece={piece} isInteractive={selectedPiece !== undefined} />
+            <PlayerPiece
+              key={piece.id}
+              piece={piece}
+              isInteractive={piece.player === props.ctx.currentPlayer}
+              isSelected={selectedPieceId === piece.id}
+              onSelect={() => setSelectedPieceId(piece.id)}
+            />
           </BoardPosition>
         ))}
       </Box>
+      {selectedPieceId && (
+        <Box
+          className="TargetSpaces"
+          position="absolute"
+          left={0}
+          top={0}
+          width="100%"
+          height={'100%'}
+        >
+          {validPositionsForSelectedPiece.map((position) => (
+            <BoardTargetSpace
+              key={`${position.row},${position.column}`}
+              position={position}
+              isSelectable
+              onSelect={handleSelectSpace}
+            />
+          ))}
+        </Box>
+      )}
       {[Player.BLACK, Player.WHITE].map((player) => {
         const playerIsCurrent = player === props.ctx.currentPlayer;
         const bag = playerIsCurrent ? piecesInCurrentPlayerBag : piecesInOppositePlayerBat;
@@ -243,8 +292,8 @@ export default function Board(props: HiveBoardProps) {
                     key={i}
                     piece={piece}
                     isInteractive={playerIsCurrent}
-                    isSelected={playerIsCurrent && selectedPiece === i}
-                    onSelect={() => setSelectedPiece(i)}
+                    isSelected={selectedPieceId === piece.id}
+                    onSelect={() => setSelectedPieceId(piece.id)}
                   />
                 </Square>
               ))}

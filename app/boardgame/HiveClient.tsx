@@ -22,6 +22,7 @@ const HiveClient = Client({
   // The number of players.
   numPlayers: 2,
   board: Main,
+  debug: true,
 });
 
 export default HiveClient;
