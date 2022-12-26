@@ -26,5 +26,5 @@ export type Piece = {
 export type Position = {
   r: number; // row: can be 0 or positive or negative
   q: number; // column: can be 0 or positive or negative
-  layer?: number; // How high stacked is this piece can be 0 or positive. If not present is assumed to be 0
+  layer: number; // How high stacked is this piece can be 0 or positive
 };

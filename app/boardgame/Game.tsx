@@ -11,6 +11,7 @@ import {
   allNeighbors,
   subtractGrids,
 } from './lib/HexGrid';
+import makePosition, { positionFromTile } from './lib/makePosition';
 import { Piece, PieceKind, Player, Position } from './types';
 
 export function findPiece(pieces: Piece[], id: string) {
@@ -125,7 +126,7 @@ export function allValidMoves(piece: Piece, state: HiveGameState, ctx: Ctx): typ
     const anotherPiecePosition = piecesOnBoard.filter((p) => p.id !== piece.id)[0].position!;
     validMoves = validMoves.filter((hex) => {
       const newHiveGrid = makeGrid(
-        piecesOnBoard.map((p) => (p.id === piece.id ? hex : p.position!)),
+        piecesOnBoard.filter((p) => p.id !== piece.id).map((p) => p.position!),
       );
       const startingPosition = new Tile(anotherPiecePosition);
       const hexesOfOtherPieces = newHiveGrid.filter((hex) => !hex.equals(startingPosition));
@@ -154,14 +155,18 @@ export function isValidMove(
   state: HiveGameState,
   ctx: Ctx,
 ): boolean {
-  const hex = new Tile(position);
-  return allValidMoves(piece, state, ctx).hasHex(new Tile(position));
+  const validMoves = allValidMoves(piece, state, ctx);
+  return validMoves.hasHex(new Tile(position));
+}
+
+export function defaultSetup() {
+  return {
+    pieces: [...makeBag(Player.WHITE), ...makeBag(Player.BLACK)],
+  };
 }
 
 const Game: Game<HiveGameState> = {
-  setup: () => ({
-    pieces: [...makeBag(Player.WHITE), ...makeBag(Player.BLACK)],
-  }),
+  setup: defaultSetup,
 
   turn: {
     minMoves: 1,
@@ -174,10 +179,22 @@ const Game: Game<HiveGameState> = {
       // TODO: make sure the piece doesn't have a position already
       // TODO: make sure the position doesn't have a piece already
       if (!isValidMove(piece, position, G, ctx)) {
+        console.log(ctx.turn);
         return INVALID_MOVE;
       }
+      let newPosition = makePosition(position);
+      if (piece.kind === PieceKind.BEETLE && piece.position) {
+        // find other pieces and tile this one on top of them
+        const tileForNewPosition = new Tile(position);
+        const existingPieces = G.pieces.filter(
+          (p) => p.position && tileForNewPosition.equals(new Tile(p.position)),
+        );
+        const newLayer = existingPieces.length;
+        newPosition = { ...newPosition, layer: newLayer };
+      }
+
       const index = G.pieces.findIndex((p) => p.id === piece.id);
-      G.pieces[index].position = position;
+      G.pieces[index].position = newPosition;
     },
   },
 };

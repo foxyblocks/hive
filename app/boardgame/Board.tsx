@@ -1,7 +1,7 @@
 import { Grid as HexGrid, rectangle, Hex } from 'honeycomb-grid';
 import type { BoardProps } from 'boardgame.io/react';
 import { HiveGameState, colorForPlayer, isCurrentPlayer, allValidMoves } from './Game';
-import { PieceKind, Piece, Player } from './types';
+import { PieceKind, Piece, Player, Position } from './types';
 import {
   Box,
   Center,
@@ -15,6 +15,7 @@ import {
 } from '@chakra-ui/react';
 import { ReactNode, useMemo, useState } from 'react';
 import { Tile } from './lib/HexGrid';
+import { positionFromTile } from './lib/makePosition';
 
 const GRID_SIZE = 9;
 const EMOJIS = {
@@ -57,12 +58,15 @@ function Hexagon({
   );
 }
 
-function BoardPosition({ tile, children }: { tile: Hex; children: ReactNode }) {
+function BoardPosition({ position, children }: { position: Position; children: ReactNode }) {
+  const tile = useMemo(() => new Tile(position), [position]);
+
   const { x, y } = tile.center;
   const xOffset = x * GRID_SIZE * -0.52;
   const yOffset = y * GRID_SIZE * -0.52;
   return (
     <Center
+      className="BoardPosition"
       w={`${GRID_SIZE}vmax`}
       h={`${GRID_SIZE}vmax`}
       pos="absolute"
@@ -74,6 +78,7 @@ function BoardPosition({ tile, children }: { tile: Hex; children: ReactNode }) {
       gridTemplateColumns={'1fr'}
       placeContent={'center'}
       pointerEvents="all"
+      zIndex={position.layer ? position.layer + 1 : 0}
     >
       {children}
     </Center>
@@ -81,15 +86,15 @@ function BoardPosition({ tile, children }: { tile: Hex; children: ReactNode }) {
 }
 
 interface BoardBgSpaceProps {
-  tile: Hex;
+  position: Position;
 }
-function BoardBgSpace({ tile }: BoardBgSpaceProps) {
+function BoardBgSpace({ position }: BoardBgSpaceProps) {
   return (
-    <BoardPosition tile={tile}>
+    <BoardPosition position={position}>
       <Hexagon fill="#efefef" />
       <Center position={'absolute'} width="100%" height="100%">
         <Text>
-          {Math.round(tile.q)}, {Math.round(tile.r)}
+          {Math.round(position.q)}, {Math.round(position.r)}
         </Text>
       </Center>
     </BoardPosition>
@@ -97,19 +102,19 @@ function BoardBgSpace({ tile }: BoardBgSpaceProps) {
 }
 
 interface BoardTargetSpaceProps {
-  tile: Hex;
+  position: Position;
   isSelectable?: boolean;
-  onSelect?: (pos: Hex) => void;
+  onSelect?: (pos: Position) => void;
 }
-function BoardTargetSpace({ tile, isSelectable, onSelect }: BoardTargetSpaceProps) {
+function BoardTargetSpace({ position, isSelectable, onSelect }: BoardTargetSpaceProps) {
   const [isHovered, setIsHovered] = useState(false);
   function handleSelect() {
-    onSelect && isSelectable && onSelect(tile);
+    onSelect && isSelectable && onSelect(position);
   }
 
   const strokeColor = isSelectable ? (isHovered ? 'black' : 'blue') : undefined;
   return (
-    <BoardPosition tile={tile}>
+    <BoardPosition position={position}>
       <Hexagon
         fill="transparent"
         stroke={strokeColor}
@@ -130,6 +135,7 @@ interface PlayerPieceProps {
 }
 function PlayerPiece({ piece, isSelected, onSelect, isInteractive }: PlayerPieceProps) {
   const [isHovered, setIsHovered] = useBoolean(false);
+  const layer = piece.position?.layer ?? 0;
   return (
     <Box
       className="PlayerPiece"
@@ -142,6 +148,7 @@ function PlayerPiece({ piece, isSelected, onSelect, isInteractive }: PlayerPiece
       pointerEvents={isInteractive ? 'all' : 'none'}
       onMouseEnter={setIsHovered.on}
       onMouseLeave={setIsHovered.off}
+      transform={`translate(${layer * 5}%, ${layer * 5}%)`}
     >
       <Box gridRow={1} gridColumn={1}>
         <Hexagon
@@ -192,14 +199,14 @@ export default function Board(props: HiveBoardProps) {
 
   const isPlacingFirstPiece = piecesOnBoard.length === 0;
 
-  function handleSelectSpace(tile: Hex) {
+  function handleSelectSpace(pos: Position) {
     if (selectedPieceId === undefined) {
       return;
     }
 
     const piece = props.G.pieces.find((piece) => piece.id === selectedPieceId);
 
-    props.moves.movePiece(piece, tile);
+    props.moves.movePiece(piece, pos);
     setSelectedPieceId(undefined);
   }
 
@@ -234,12 +241,12 @@ export default function Board(props: HiveBoardProps) {
           pointerEvents="none"
         >
           {emptyGridBoard.toArray().map((hex) => (
-            <BoardBgSpace key={hex.toString()} tile={hex} />
+            <BoardBgSpace key={hex.toString()} position={positionFromTile(hex)} />
           ))}
         </Box>
         <Box className="PlayerPieces" width="100%" height={'100%'} pointerEvents="none">
           {piecesOnBoard.map((piece) => (
-            <BoardPosition key={piece.id} tile={new Tile(piece.position!)}>
+            <BoardPosition key={piece.id} position={piece.position!}>
               <PlayerPiece
                 key={piece.id}
                 piece={piece}
@@ -262,7 +269,7 @@ export default function Board(props: HiveBoardProps) {
             {validPositionsForSelectedPiece.map((hex) => (
               <BoardTargetSpace
                 key={hex.toString()}
-                tile={hex}
+                position={positionFromTile(hex)}
                 isSelectable
                 onSelect={handleSelectSpace}
               />

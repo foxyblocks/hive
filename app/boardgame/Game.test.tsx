@@ -3,10 +3,11 @@ import Game, { colorForPlayer, HiveGameState, isValidMove, makePiece } from './G
 import { Direction, Piece, PieceKind, Player, Position } from './types';
 import makePosition, { makeRelativePosition } from './lib/makePosition';
 import { makeGrid } from './lib/HexGrid';
+import { AxialCoordinates } from 'honeycomb-grid';
 
-type move = [piece: Piece, position: Position];
+type move = [piece: Piece, position: AxialCoordinates];
 
-function testGame(startingPositions: move[] = []) {
+function testGame() {
   const client = Client<HiveGameState>({
     game: Game,
   });
@@ -19,18 +20,18 @@ function testGame(startingPositions: move[] = []) {
   function doMoves(moves: move[]) {
     const state = client.getState()!;
     moves.forEach((move, index) => {
-      const piece = state.G.pieces.find((p) => p.id === move[0].id);
+      const piece = getPiece(move[0]);
       if (!checkMove(piece!, move[1])) {
         throw `INVALID MOVE at index ${index}: {${move[0].id},  ${move[1].q}, ${move[1].r}}`;
       }
-      client.moves.movePiece(piece!, move[1]);
+      client.moves.movePiece(piece!, makePosition(move[1]));
     });
     return api;
   }
 
-  function checkMove(piece: Piece, position: Position) {
+  function checkMove(piece: Piece, position: AxialCoordinates) {
     const { G, ctx } = client.getState()!;
-    return isValidMove(getPiece(piece)!, position, G, ctx);
+    return isValidMove(getPiece(piece)!, makePosition(position), G, ctx);
   }
 
   const api = {
@@ -39,8 +40,6 @@ function testGame(startingPositions: move[] = []) {
     doMoves,
     isValidMove: checkMove,
   };
-
-  doMoves(startingPositions);
 
   return api;
 }
@@ -78,7 +77,7 @@ describe('isValidMove', () => {
     test('returns false if a piece is already in the given position', () => {
       const whiteQueen = makePiece(PieceKind.QUEEN, Player.WHITE);
       const blackQueen = makePiece(PieceKind.QUEEN, Player.BLACK);
-      const position = { r: 0, q: 0 };
+      const position = makePosition({ r: 0, q: 0 });
       const game = testGame().doMoves([[whiteQueen, position]]);
 
       expect(game.isValidMove(blackQueen, position)).toBe(false);
@@ -128,6 +127,7 @@ describe('isValidMove', () => {
 
       expect(isValidMove(pieceToMove, topRightNeighbor, state!.G, state!.ctx)).toBe(false);
     });
+    test.todo('one hive rule should not take the new position into account');
   });
   describe('second turn', () => {
     test('must touch the opponent piece when placing second piece', () => {
@@ -273,12 +273,13 @@ describe('isValidMove', () => {
   });
 
   describe('beetle', () => {
-    test('allows climbing on opponent pieces', () => {
-      const whiteBeetle = makePiece(PieceKind.BEETLE, Player.WHITE, 1);
-      const blackQueen = makePiece(PieceKind.QUEEN, Player.BLACK);
-      const whiteQueen = makePiece(PieceKind.QUEEN, Player.WHITE);
+    const whiteBeetle = makePiece(PieceKind.BEETLE, Player.WHITE, 1);
+    const blackQueen = makePiece(PieceKind.QUEEN, Player.BLACK);
+    const whiteQueen = makePiece(PieceKind.QUEEN, Player.WHITE);
 
-      const game = testGame();
+    const game = testGame();
+    beforeEach(() => {
+      game.client.reset();
       game.doMoves([
         // put white ant in the middle
         [whiteQueen, { q: 0, r: 0 }],
@@ -289,9 +290,14 @@ describe('isValidMove', () => {
         // move black queen to the south west
         [blackQueen, { q: -1, r: 0 }],
       ]);
-
-      // move white beetle on top of black queen
-      expect(game.isValidMove(whiteBeetle, { q: -1, r: 0 })).toBe(true);
+    });
+    test('allows climbing on opponent pieces', () => {
+      // expect(game.getPiece(blackQueen)?.position).toEqual(makePosition({ q: -1, r: 0 }));
+      game.doMoves([
+        // move white beetle on top of black queen
+        [whiteBeetle, { q: -1, r: 0 }],
+      ]);
+      expect(game.getPiece(whiteBeetle)?.position).toEqual(makePosition({ q: -1, r: 0, layer: 1 }));
     });
 
     test('it allows climbing on own pieces', () => {
@@ -311,12 +317,60 @@ describe('isValidMove', () => {
         [blackQueen, { q: -1, r: 0 }],
       ]);
 
-      // move white beetle on top of white queen
       expect(game.isValidMove(whiteBeetle, game.getPiece(whiteQueen)?.position!)).toBe(true);
+
+      game.doMoves([
+        // move white beetle on top of black queen
+        [whiteBeetle, { q: 0, r: 0 }],
+      ]);
+
+      // move white beetle on top of white queen
+      expect(game.getPiece(whiteBeetle)?.position).toEqual(makePosition({ q: 0, r: 0, layer: 1 }));
     });
+
+    test.todo('a piece cant move if a beetle is on it');
   });
 
-  test.todo('grasshopper');
+  describe('grasshopper', () => {
+    const game = testGame();
+    const whiteQueen = makePiece(PieceKind.QUEEN, Player.WHITE);
+    const blackQueen = makePiece(PieceKind.QUEEN, Player.BLACK);
+    const whiteBeetle = makePiece(PieceKind.BEETLE, Player.WHITE, 1);
+    const blackBeetle = makePiece(PieceKind.BEETLE, Player.BLACK, 1);
+    const blackBeetle2 = makePiece(PieceKind.BEETLE, Player.BLACK, 2);
+    const whiteGrasshopper1 = makePiece(PieceKind.GRASSHOPPER, Player.WHITE, 1);
+    const whiteGrasshopper2 = makePiece(PieceKind.GRASSHOPPER, Player.WHITE, 2);
+    const blackAnt = makePiece(PieceKind.ANT, Player.BLACK, 1);
+    beforeEach(() => {
+      game.client.reset();
+      game.doMoves([
+        // put white ant in the middle
+        [whiteQueen, { q: 0, r: 0 }],
+        // put black queen to the north
+        [blackQueen, { q: 1, r: -1 }],
+        // put white beetle to the south west
+        [whiteBeetle, { q: -1, r: 1 }],
+        // put black beetle north of black queen
+        [blackBeetle, { q: 1, r: -2 }],
+        // put white grasshopper southwest of white beetle
+        [whiteGrasshopper1, { q: -2, r: 2 }],
+        // put black beetle2 NW of black beetle
+        [blackBeetle2, { q: 0, r: -2 }],
+        // put white grasshopper2 S of white queen
+        [whiteGrasshopper2, { q: 0, r: 1 }],
+        // put black ant north of black beetle2
+        [blackAnt, { q: 0, r: -3 }],
+      ]);
+    });
+    test('cannot move without jumping a piece', () => {
+      expect(game.isValidMove(whiteGrasshopper1, { q: 2, r: -2 })).toBe(true);
+      expect(game.isValidMove(whiteGrasshopper1, { q: -1, r: 2 })).toBe(false);
+    });
+    test('lands in the first empty space', () => {
+      expect(game.isValidMove(whiteGrasshopper2, { q: 0, r: -1 })).toBe(true);
+      expect(game.isValidMove(whiteGrasshopper2, { q: 0, r: -4 })).toBe(false);
+    });
+  });
   test.todo('spider');
 
   test.todo('freedom to move');

@@ -5,7 +5,7 @@ import { makeGrid } from "./HexGrid";
 export default function makePosition(position: Partial<Position>): Position {
   return {
     q: 0,
-    r: 1,
+    r: 0,
     layer: 0,
     ...position
   }
@@ -24,8 +24,8 @@ export function makeRelativePosition(firstPosition: Position, direction: Directi
 
 export function positionFromTile(tile: Hex): Position {
   return {
-    q: tile.col,
-    r: tile.row,
+    q: tile.q,
+    r: tile.r,
     layer: 0,
   }
 }
