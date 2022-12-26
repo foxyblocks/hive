@@ -1,6 +1,7 @@
+import { Grid as HexGrid, rectangle, Hex } from 'honeycomb-grid';
 import type { BoardProps } from 'boardgame.io/react';
-import { HiveGameState, colorForPlayer, isCurrentPlayer, makeBoard, isValidMove } from './Game';
-import { PieceKind, Piece, Position, Player } from './types';
+import { HiveGameState, colorForPlayer, isCurrentPlayer, allValidMoves } from './Game';
+import { PieceKind, Piece, Player } from './types';
 import {
   Box,
   Center,
@@ -12,7 +13,8 @@ import {
   Text,
   useBoolean,
 } from '@chakra-ui/react';
-import { ReactNode, useCallback, useMemo, useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
+import { Tile } from './lib/HexGrid';
 
 const GRID_SIZE = 9;
 const EMOJIS = {
@@ -55,16 +57,17 @@ function Hexagon({
   );
 }
 
-function BoardPosition({ position, children }: { position: Position; children: ReactNode }) {
-  const xOffset = position.column * ((GRID_SIZE / 10) * 7.8);
-  const yOffset = position.row * ((GRID_SIZE / 10) * 4.5);
+function BoardPosition({ tile, children }: { tile: Hex; children: ReactNode }) {
+  const { x, y } = tile.center;
+  const xOffset = x * GRID_SIZE * -0.52;
+  const yOffset = y * GRID_SIZE * -0.52;
   return (
     <Center
       w={`${GRID_SIZE}vmax`}
       h={`${GRID_SIZE}vmax`}
       pos="absolute"
-      top={`calc(50% + ${yOffset}vmax)`}
-      left={`calc(50% + ${xOffset}vmax)`}
+      top={`${yOffset}vmax`}
+      left={`${xOffset}vmax`}
       transform="translate(-50%, -50%)"
       display={'grid'}
       gridTemplateRows={'1fr'}
@@ -78,30 +81,35 @@ function BoardPosition({ position, children }: { position: Position; children: R
 }
 
 interface BoardBgSpaceProps {
-  position: Position;
+  tile: Hex;
 }
-function BoardBgSpace({ position }: BoardBgSpaceProps) {
+function BoardBgSpace({ tile }: BoardBgSpaceProps) {
   return (
-    <BoardPosition position={position}>
+    <BoardPosition tile={tile}>
       <Hexagon fill="#efefef" />
+      <Center position={'absolute'} width="100%" height="100%">
+        <Text>
+          {Math.round(tile.q)}, {Math.round(tile.r)}
+        </Text>
+      </Center>
     </BoardPosition>
   );
 }
 
 interface BoardTargetSpaceProps {
-  position: Position;
+  tile: Hex;
   isSelectable?: boolean;
-  onSelect?: (pos: Position) => void;
+  onSelect?: (pos: Hex) => void;
 }
-function BoardTargetSpace({ position, isSelectable, onSelect }: BoardTargetSpaceProps) {
+function BoardTargetSpace({ tile, isSelectable, onSelect }: BoardTargetSpaceProps) {
   const [isHovered, setIsHovered] = useState(false);
   function handleSelect() {
-    onSelect && isSelectable && onSelect(position);
+    onSelect && isSelectable && onSelect(tile);
   }
 
   const strokeColor = isSelectable ? (isHovered ? 'black' : 'blue') : undefined;
   return (
-    <BoardPosition position={position}>
+    <BoardPosition tile={tile}>
       <Hexagon
         fill="transparent"
         stroke={strokeColor}
@@ -160,7 +168,10 @@ interface HiveBoardProps extends BoardProps<HiveGameState> {
   // Additional custom properties for your component
 }
 
-const boardLayer = makeBoard();
+const emptyGridBoard = new HexGrid(
+  Tile,
+  rectangle({ width: 16, height: 14, start: { col: -7, row: -7 } }),
+);
 
 export default function Board(props: HiveBoardProps) {
   const [selectedPieceId, setSelectedPieceId] = useState<string | undefined>(undefined);
@@ -179,14 +190,16 @@ export default function Board(props: HiveBoardProps) {
     (piece) => piece.position === undefined && piece.player !== currentPlayer,
   );
 
-  function handleSelectSpace(position: Position) {
+  const isPlacingFirstPiece = piecesOnBoard.length === 0;
+
+  function handleSelectSpace(tile: Hex) {
     if (selectedPieceId === undefined) {
       return;
     }
 
     const piece = props.G.pieces.find((piece) => piece.id === selectedPieceId);
 
-    props.moves.movePiece(piece, position);
+    props.moves.movePiece(piece, tile);
     setSelectedPieceId(undefined);
   }
 
@@ -194,9 +207,7 @@ export default function Board(props: HiveBoardProps) {
     if (!selectedPiece) {
       return [];
     }
-    return boardLayer.filter((position) => {
-      return isValidMove(selectedPiece, position, props.G, props.ctx);
-    });
+    return allValidMoves(selectedPiece, props.G, props.ctx).toArray();
   }, [selectedPiece, props.G, props.ctx]);
 
   return (
@@ -208,58 +219,57 @@ export default function Board(props: HiveBoardProps) {
       bgColor="gray.50"
     >
       <Box
-        className="BgSpaces"
+        className="Layers"
         position="absolute"
-        left={0}
-        top={0}
+        top="50%"
+        left={'50%'}
         width="100%"
         height={'100%'}
-        pointerEvents="none"
       >
-        {boardLayer.map((position) => (
-          <BoardBgSpace key={`${position.row},${position.column}`} position={position} />
-        ))}
-      </Box>
-      <Box
-        className="PlayerPieces"
-        position="absolute"
-        left={0}
-        top={0}
-        width="100%"
-        height={'100%'}
-        pointerEvents="none"
-      >
-        {piecesOnBoard.map((piece) => (
-          <BoardPosition key={piece.id} position={piece.position!}>
-            <PlayerPiece
-              key={piece.id}
-              piece={piece}
-              isInteractive={piece.player === props.ctx.currentPlayer}
-              isSelected={selectedPieceId === piece.id}
-              onSelect={() => setSelectedPieceId(piece.id)}
-            />
-          </BoardPosition>
-        ))}
-      </Box>
-      {selectedPieceId && (
         <Box
-          className="TargetSpaces"
+          className="BgSpaces"
           position="absolute"
-          left={0}
-          top={0}
           width="100%"
           height={'100%'}
+          pointerEvents="none"
         >
-          {validPositionsForSelectedPiece.map((position) => (
-            <BoardTargetSpace
-              key={`${position.row},${position.column}`}
-              position={position}
-              isSelectable
-              onSelect={handleSelectSpace}
-            />
+          {emptyGridBoard.toArray().map((hex) => (
+            <BoardBgSpace key={hex.toString()} tile={hex} />
           ))}
         </Box>
-      )}
+        <Box className="PlayerPieces" width="100%" height={'100%'} pointerEvents="none">
+          {piecesOnBoard.map((piece) => (
+            <BoardPosition key={piece.id} tile={new Tile(piece.position!)}>
+              <PlayerPiece
+                key={piece.id}
+                piece={piece}
+                isInteractive={piece.player === props.ctx.currentPlayer}
+                isSelected={selectedPieceId === piece.id}
+                onSelect={() => setSelectedPieceId(piece.id)}
+              />
+            </BoardPosition>
+          ))}
+        </Box>
+        {selectedPieceId && (
+          <Box
+            className="TargetSpaces"
+            position="absolute"
+            left={0}
+            top={0}
+            width="100%"
+            height={'100%'}
+          >
+            {validPositionsForSelectedPiece.map((hex) => (
+              <BoardTargetSpace
+                key={hex.toString()}
+                tile={hex}
+                isSelectable
+                onSelect={handleSelectSpace}
+              />
+            ))}
+          </Box>
+        )}
+      </Box>
       {[Player.BLACK, Player.WHITE].map((player) => {
         const playerIsCurrent = player === props.ctx.currentPlayer;
         const bag = playerIsCurrent ? piecesInCurrentPlayerBag : piecesInOppositePlayerBat;

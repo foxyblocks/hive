@@ -1,9 +1,11 @@
+import { Hex } from "honeycomb-grid";
 import { Direction, Position } from "../types";
+import { makeGrid } from "./HexGrid";
 
 export default function makePosition(position: Partial<Position>): Position {
   return {
-    column: 0,
-    row: 1,
+    q: 0,
+    r: 1,
     layer: 0,
     ...position
   }
@@ -11,36 +13,19 @@ export default function makePosition(position: Partial<Position>): Position {
 
 
 export function makeRelativePosition(firstPosition: Position, direction: Direction, relativeLayer = 0): Position {
-  let { column, row, layer } = firstPosition;
-
-  switch(direction) {
-    case Direction.TOP:
-      row -= 2;
-      break;
-    case Direction.BOTTOM:
-      row += 2;
-      break;
-    case Direction.TOP_LEFT:
-      row -= 1;
-      column -= 1;
-      break;
-    case Direction.TOP_RIGHT:
-      row -= 1;
-      column += 1;
-      break;
-    case Direction.BOTTOM_LEFT:
-      row += 1;
-      column -= 1;
-      break;
-    case Direction.BOTTOM_RIGHT:
-      row += 1;
-      column += 1;
-      break;
-  }
+  const hex =  makeGrid().neighborOf(makeGrid().createHex(firstPosition), direction)
 
   return {
-    column,
-    row,
-    layer: layer + relativeLayer,
+    q: hex.col,
+    r: hex.row,
+    layer: (firstPosition.layer || 0) + relativeLayer,
+  }
+}
+
+export function positionFromTile(tile: Hex): Position {
+  return {
+    q: tile.col,
+    r: tile.row,
+    layer: 0,
   }
 }

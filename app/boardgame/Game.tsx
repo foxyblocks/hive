@@ -1,6 +1,16 @@
+import { aStar } from 'abstract-astar';
 import type { Game, Move, Ctx, State } from 'boardgame.io';
 import { INVALID_MOVE } from 'boardgame.io/core';
-import { isAdjacent, isValidGridSpace } from './lib/isAdjacent';
+import { ring } from 'honeycomb-grid';
+import {
+  HexGrid,
+  Tile,
+  makeGrid,
+  makeBufferGrid,
+  intersectGrids,
+  allNeighbors,
+  subtractGrids,
+} from './lib/HexGrid';
 import { Piece, PieceKind, Player, Position } from './types';
 
 export function findPiece(pieces: Piece[], id: string) {
@@ -47,52 +57,105 @@ function makeBag(player: Player): Piece[] {
   return bag;
 }
 
-// make a board of spaces that goes 10 rows up, 10 rows down, 10 columns left, 10 columns right
-export function makeBoard() {
-  const spaces: Position[] = [];
-  for (let row = -10; row <= 10; row++) {
-    for (let column = -10; column <= 10; column++) {
-      const space = { row, column, layer: 0 };
-      if (!isValidGridSpace(space)) {
-        continue;
-      }
-      spaces.push(space);
-    }
-  }
-  return spaces;
+// Converts a game turn to a player turn
+export function playerTurn(player: Player, turn: number) {
+  return Math.round(turn / 2);
 }
 
-export function isValidMove(piece: Piece, position: Position, state: HiveGameState, ctx: Ctx) {
-  const existingPosition = state.pieces.find(
-    (p) => p.position?.row === position.row && p.position?.column === position.column,
-  );
-  if (existingPosition) {
-    return false;
+export function allValidMoves(piece: Piece, state: HiveGameState, ctx: Ctx): typeof HexGrid {
+  if (ctx.turn === 1) {
+    // just return the center square
+    return makeGrid([{ row: 0, col: 0 }]);
   }
 
+  const piecesOnBoard = state.pieces.filter((p) => !!p.position);
+  const opponentPositions = piecesOnBoard
+    .filter((p) => p.player !== piece.player)
+    .map((p) => p.position!);
+  const ownPositions = piecesOnBoard
+    .filter((p) => p.player === piece.player)
+    .map((p) => p.position!);
+
+  const existingPositions = [...opponentPositions, ...ownPositions];
+
+  const HiveGrid = makeGrid(existingPositions);
+  const opponentGrid = makeGrid(opponentPositions);
+  const ownGrid = makeGrid(ownPositions);
+  const bufferGrid = makeBufferGrid(HiveGrid, true);
+  const borderGrid = makeBufferGrid(HiveGrid, false);
+
+  // second player's first turn, must place a piece adjacent to the first piece
   if (ctx.turn === 2) {
-    const firstPiecePosition = state.pieces.find((p) => Boolean(p.position))!.position!;
-    return isAdjacent(firstPiecePosition, position);
-  }
-  if (ctx.turn >= 3) {
-    const opponentPositions = state.pieces
-      .filter((p) => p.player !== piece.player && p.position)
-      .map((p) => p.position!);
-    const ownPositions = state.pieces
-      .filter((p) => p.player === piece.player && p.position)
-      .map((p) => p.position!);
-    if (opponentPositions.some((p) => isAdjacent(p, position))) {
-      return false;
-    }
-
-    if (!ownPositions.some((p) => isAdjacent(p, position))) {
-      return false;
-    }
-
-    return true;
+    return borderGrid;
   }
 
-  return true;
+  // this is the either player's fourth turn
+  if (playerTurn(piece.player, ctx.turn) === 4) {
+    const ownQueenIsOnBoard = piecesOnBoard.find(
+      (p) => p.player === piece.player && p.kind === PieceKind.QUEEN,
+    );
+    if (!ownQueenIsOnBoard && piece.kind != PieceKind.QUEEN) {
+      // empty grid, this move is invalid
+      return makeGrid();
+    }
+  }
+
+  // Placing a piece, just make sure it's adjacent to something and not adjacent to the opponent
+  if (ctx.turn >= 3 && !piece.position) {
+    const opponentBufferGrid = makeBufferGrid(opponentGrid);
+    return subtractGrids(borderGrid, opponentBufferGrid);
+  }
+
+  let validMoves = bufferGrid;
+
+  // TODO: check for piece specific rules here!
+
+  if (piece.kind !== PieceKind.BEETLE) {
+    // filter out existing positions grid
+    validMoves = borderGrid;
+  }
+
+  if (piece.kind === PieceKind.QUEEN || piece.kind === PieceKind.BEETLE) {
+    // filter moves to only those that are one space away
+    validMoves = intersectGrids(validMoves, allNeighbors(new Tile(piece.position!)));
+  }
+
+  if (piece.position) {
+    // this is a normal move, check for two hive rule
+    const anotherPiecePosition = piecesOnBoard.filter((p) => p.id !== piece.id)[0].position!;
+    validMoves = validMoves.filter((hex) => {
+      const newHiveGrid = makeGrid(
+        piecesOnBoard.map((p) => (p.id === piece.id ? hex : p.position!)),
+      );
+      const startingPosition = new Tile(anotherPiecePosition);
+      const hexesOfOtherPieces = newHiveGrid.filter((hex) => !hex.equals(startingPosition));
+
+      const isOneHive = hexesOfOtherPieces.toArray().every((hex) => {
+        const shortestPath = aStar<Tile>({
+          start: startingPosition,
+          goal: hex,
+          estimateFromNodeToGoal: (tile) => newHiveGrid.distance(tile, hex),
+          neighborsAdjacentToNode: (center) =>
+            newHiveGrid.traverse(ring({ center, radius: 1 })).toArray(),
+          actualCostToMove: (_, __, tile) => 1,
+        });
+        return !!shortestPath;
+      });
+      return isOneHive;
+    });
+  }
+
+  return validMoves;
+}
+
+export function isValidMove(
+  piece: Piece,
+  position: Position,
+  state: HiveGameState,
+  ctx: Ctx,
+): boolean {
+  const hex = new Tile(position);
+  return allValidMoves(piece, state, ctx).hasHex(new Tile(position));
 }
 
 const Game: Game<HiveGameState> = {
@@ -120,6 +183,3 @@ const Game: Game<HiveGameState> = {
 };
 
 export default Game;
-function isEven(row: number) {
-  throw new Error('Function not implemented.');
-}

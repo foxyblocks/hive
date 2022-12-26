@@ -1,11 +1,6 @@
-export enum Direction {
-  TOP = 'TOP',
-  TOP_RIGHT = 'TOP_RIGHT',
-  TOP_LEFT = 'TOP_LEFT',
-  BOTTOM_RIGHT = 'BOTTOM_RIGHT',
-  BOTTOM = 'BOTTOM',
-  BOTTOM_LEFT = 'BOTTOM_LEFT',
-}
+import { Direction } from "honeycomb-grid";
+
+export {Direction};
 
 export enum Player {
   'WHITE' = '0',
@@ -27,8 +22,9 @@ export type Piece = {
   position?: Position;
 };
 
+// Uses the axial coordinate system. See https://www.redblobgames.com/grids/hexagons-v1/#coordinates-axial
 export type Position = {
-  row: number; // can be 0 or positive or negative
-  column: number; // can be 0 or positive or negative
-  layer: number; // How high stacked is this piece can be 0 or positive
+  r: number; // row: can be 0 or positive or negative
+  q: number; // column: can be 0 or positive or negative
+  layer?: number; // How high stacked is this piece can be 0 or positive. If not present is assumed to be 0
 };
